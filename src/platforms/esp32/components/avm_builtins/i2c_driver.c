@@ -26,6 +26,7 @@
 #include <driver/i2c.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
+#include <hal/i2c_ll.h>
 #include <freertos/task.h>
 
 #include "atom.h"
@@ -154,6 +155,16 @@ Context *i2c_driver_create_port(GlobalContext *global, term opts)
     err = i2c_driver_install(i2c_data->i2c_num, I2C_MODE_MASTER, 0, 0, 0);
     if (UNLIKELY(err != ESP_OK)) {
         ESP_LOGE(TAG, "Failed to install I2C driver.  err=%s", esp_err_to_name(err));
+        goto free_and_exit;
+    }
+
+    // The default hardware timeout is about 10 SCL cycles, which aborts
+    // transfers to devices that stretch the clock for longer, such as the
+    // BNO08x IMUs.
+    err = i2c_set_timeout(i2c_data->i2c_num, I2C_LL_MAX_TIMEOUT);
+    if (UNLIKELY(err != ESP_OK)) {
+        ESP_LOGE(TAG, "Failed to set I2C timeout.  err=%s", esp_err_to_name(err));
+        i2c_driver_delete(i2c_data->i2c_num);
         goto free_and_exit;
     }
 

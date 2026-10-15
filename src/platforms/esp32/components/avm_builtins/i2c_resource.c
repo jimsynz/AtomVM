@@ -27,6 +27,7 @@
 // TODO: Migrate to i2c_master.h, once we drop support for IDF SDK 4.x
 #include <driver/i2c.h>
 #include <esp_log.h>
+#include <hal/i2c_ll.h>
 
 #include <context.h>
 #include <defaultatoms.h>
@@ -230,6 +231,21 @@ static term nif_i2c_open(Context *ctx, int argc, term argv[])
     err = i2c_driver_install(i2c_num, I2C_MODE_MASTER, 0, 0, 0);
     if (UNLIKELY(err != ESP_OK)) {
         ESP_LOGE(TAG, "Failed to install I2C driver.  err=%i", err);
+        if (UNLIKELY(memory_ensure_free(ctx, TUPLE_SIZE(2)) != MEMORY_GC_OK)) {
+            ESP_LOGW(TAG, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+            return OUT_OF_MEMORY_ATOM;
+        }
+        // TODO breaks i2c::open/1 API
+        return create_error_tuple(ctx, term_from_int(err));
+    }
+
+    // The default hardware timeout is about 10 SCL cycles, which aborts
+    // transfers to devices that stretch the clock for longer, such as the
+    // BNO08x IMUs.
+    err = i2c_set_timeout(i2c_num, I2C_LL_MAX_TIMEOUT);
+    if (UNLIKELY(err != ESP_OK)) {
+        ESP_LOGE(TAG, "Failed to set I2C timeout.  err=%i", err);
+        i2c_driver_delete(i2c_num);
         if (UNLIKELY(memory_ensure_free(ctx, TUPLE_SIZE(2)) != MEMORY_GC_OK)) {
             ESP_LOGW(TAG, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
             return OUT_OF_MEMORY_ATOM;
